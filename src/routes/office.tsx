@@ -9,15 +9,31 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { attendanceCsv, backupPayload, downloadText } from "@/lib/school/export";
 import { CLASS_TEMPLATE, parseClassCsv, starterClass } from "@/lib/school/class-list";
-import { todayISO } from "@/lib/school/rules";
+import { STATUS_LABEL, currentAttendanceEvents, isBeforeDismissal, todayISO } from "@/lib/school/rules";
 import { sectionLabel, sortSections, studentsInSection } from "@/lib/school/sections";
+import { genderLabel, groupRosterByGender, sortRosterStudents } from "@/lib/school/gender";
+import { rankMostAbsent } from "@/lib/school/attendance-report";
 import { useSchool } from "@/lib/school/store";
 
-export const Route = createFileRoute("/office")({ component: OfficePage });
+export const Route = createFileRoute("/office")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    view:
+      search.view === "sections" || search.view === "attendance"
+        ? "sections" as const
+        : search.view === "history"
+          ? "history" as const
+        : search.view === "roster"
+          ? "roster" as const
+          : search.view === "settings"
+            ? "settings" as const
+            : "dashboard" as const,
+  }),
+  component: OfficePage,
+});
 
 function OfficePage() {
   return (
-    <AppShell title="Office Dashboard" kicker="Sections, roster, and today’s gate">
+    <AppShell title="Office Dashboard" kicker="Sta Catalina National High School">
       <ClientReady>
         <OfficeGate />
       </ClientReady>
@@ -46,6 +62,8 @@ function OfficeGate() {
 }
 
 function OfficeBody() {
+  const officeSearch = Route.useSearch();
+  const navigate = Route.useNavigate();
   const school = useSchool((s) => s.school);
   const sections = useSchool((s) => s.sections);
   const students = useSchool((s) => s.students);
@@ -55,10 +73,9 @@ function OfficeBody() {
   const addStudent = useSchool((s) => s.addStudent);
   const addParent = useSchool((s) => s.addParent);
   const addSection = useSchool((s) => s.addSection);
+  const setStudentGender = useSchool((s) => s.setStudentGender);
   const removeSection = useSchool((s) => s.removeSection);
   const removeStudent = useSchool((s) => s.removeStudent);
-  const moveStudent = useSchool((s) => s.moveStudent);
-  const linkParent = useSchool((s) => s.linkParent);
   const markAbsences = useSchool((s) => s.markAbsences);
   const updateHours = useSchool((s) => s.updateHours);
   const enrollFace = useSchool((s) => s.enrollFace);
@@ -69,23 +86,52 @@ function OfficeBody() {
   const pushNotice = useSchool((s) => s.pushNotice);
   const [notice, setNotice] = useState("");
   const [enrollId, setEnrollId] = useState<string | null>(null);
-  const [logDate, setLogDate] = useState(todayISO());
-  const [filterSection, setFilterSection] = useState("");
+  const [historyDate, setHistoryDate] = useState(todayISO());
+  const [filterSection, setFilterSection] = useState(sections[0]?.id ?? "");
+  const [rosterSectionId, setRosterSectionId] = useState(sections[0]?.id ?? "");
+  const [rosterQuery, setRosterQuery] = useState("");
   const [addSectionId, setAddSectionId] = useState(sections[0]?.id ?? "");
   const fileRef = useRef<HTMLInputElement>(null);
   const classFileRef = useRef<HTMLInputElement>(null);
 
-  const day = logDate;
-  const today = attendance.filter((a) => a.date === day);
-  const visibleStudents = filterSection
-    ? studentsInSection(students, filterSection)
-    : students;
-  const visibleToday = filterSection
+  const currentDate = todayISO();
+  const canMarkAbsencesForDate = isBeforeDismissal(school);
+  const today = currentAttendanceEvents(attendance, school);
+  const activeRosterSectionId = sections.some((section) => section.id === rosterSectionId)
+    ? rosterSectionId
+    : sections[0]?.id ?? "";
+  const activeRosterSection = sections.find((section) => section.id === activeRosterSectionId);
+  const activeLogSectionId = sections.some((section) => section.id === filterSection)
+    ? filterSection
+    : sections[0]?.id ?? "";
+  const rosterStudents = activeRosterSectionId
+    ? studentsInSection(students, activeRosterSectionId)
+    : [];
+  const normalizedRosterQuery = rosterQuery.trim().toLocaleLowerCase();
+  const searchedStudents = normalizedRosterQuery
+    ? rosterStudents.filter((student) =>
+        [student.name, student.code, student.grade, student.section]
+          .some((value) => value.toLocaleLowerCase().includes(normalizedRosterQuery)),
+      )
+    : rosterStudents;
+  const rosterGroups = groupRosterByGender(sortRosterStudents(searchedStudents, "name"));
+  const absenceCards = sortSections(sections).map((section) => ({
+    section,
+    students: rankMostAbsent(studentsInSection(students, section.id), attendance),
+  }));
+  const visibleToday = activeLogSectionId
     ? today.filter((a) => {
         const st = students.find((s) => s.id === a.studentId);
-        return st?.sectionId === filterSection;
+        return st?.sectionId === activeLogSectionId;
       })
-    : today;
+    : [];
+  const loggedInToday = visibleToday
+    .filter((event) => event.direction === "in")
+    .map((event) => ({
+      event,
+      student: students.find((student) => student.id === event.studentId),
+    }))
+    .sort((a, b) => (a.student?.name ?? "").localeCompare(b.student?.name ?? "", "en", { sensitivity: "base" }));
 
   const stats = useMemo(
     () => ({
@@ -101,17 +147,20 @@ function OfficeBody() {
     e.preventDefault();
     const form = e.currentTarget;
     const data = new FormData(form);
+    const rawGender = String(data.get("gender") || "");
+    const gender = rawGender === "male" || rawGender === "female" ? rawGender : null;
     const result = addStudent({
       name: String(data.get("name") || ""),
       sectionId: addSectionId,
       pin: String(data.get("pin") || ""),
       parentId: String(data.get("parentId") || "") || null,
+      gender,
     });
     if ("error" in result) {
       setNotice(result.error);
       return;
     }
-    setNotice(`${result.name} saved in Grade ${result.grade} — ${result.section}. Code ${result.code}. PIN ${result.pin}.`);
+    setNotice(`${result.name} saved in Grade ${result.grade} — ${result.section}. Student ID ${result.code}. PIN ${result.pin}.`);
     form.reset();
   }
 
@@ -166,7 +215,11 @@ function OfficeBody() {
   }
 
   function exportLog() {
-    downloadText(`scn-attendance-${logDate}.csv`, attendanceCsv(useSchool.getState()), "text/csv;charset=utf-8");
+    downloadText(
+      `scn-attendance-${currentDate}-${activeLogSectionId}.csv`,
+      attendanceCsv({ ...useSchool.getState(), attendance: visibleToday }),
+      "text/csv;charset=utf-8",
+    );
     setNotice("Attendance CSV downloaded.");
   }
 
@@ -215,32 +268,165 @@ function OfficeBody() {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
     updateNotify({
-      emailUser: String(data.get("emailUser") || "").trim(),
-      emailPass: String(data.get("emailPass") || school.notify.emailPass),
-      emailHost: String(data.get("emailHost") || "smtp.gmail.com").trim(),
-      smsKey: String(data.get("smsKey") || school.notify.smsKey),
-      smsSender: String(data.get("smsSender") || "SCNGATE").trim(),
+    checkIn: data.get("notifyCheckIn") === "on",
+    checkOut: data.get("notifyCheckOut") === "on",
+    absence: data.get("notifyAbsence") === "on",
     });
-    setNotice("Alert settings saved. The next gate scan will email and/or text the parent.");
+    setNotice("Parent alert preferences saved. Delivery uses the school’s protected server configuration.");
   }
 
   const orderedSections = sortSections(sections);
 
   return (
-    <div className="grid gap-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <label className="text-xs uppercase tracking-wider text-muted">
-          View section
-          <SectionPicker
-            includeAll
-            sections={sections}
-            value={filterSection}
-            onChange={setFilterSection}
-          />
-        </label>
-        <p className="text-sm text-muted">
-          {sections.length} sections · {students.length} students
-        </p>
+    <div className="grid gap-4">
+      <div className="grid grid-cols-2 gap-2 border-b border-line pb-3 sm:grid-cols-5" role="tablist" aria-label="Office views">
+        <Button
+          variant={officeSearch.view === "dashboard" ? "primary" : "outline"}
+          role="tab"
+          aria-selected={officeSearch.view === "dashboard"}
+          onClick={() => void navigate({ search: { view: "dashboard" } })}
+        >
+          Overview
+        </Button>
+        <Button
+          variant={officeSearch.view === "roster" ? "primary" : "outline"}
+          role="tab"
+          aria-selected={officeSearch.view === "roster"}
+          onClick={() => void navigate({ search: { view: "roster" } })}
+        >
+          Rosters
+        </Button>
+        <Button
+          variant={officeSearch.view === "sections" ? "primary" : "outline"}
+          role="tab"
+          aria-selected={officeSearch.view === "sections"}
+          onClick={() => void navigate({ search: { view: "sections" } })}
+        >
+          Gate History
+        </Button>
+        <Button
+          variant={officeSearch.view === "history" ? "primary" : "outline"}
+          role="tab"
+          aria-selected={officeSearch.view === "history"}
+          onClick={() => void navigate({ search: { view: "history" } })}
+        >
+          Sections and Attendance
+        </Button>
+        <Button
+          variant={officeSearch.view === "settings" ? "primary" : "outline"}
+          role="tab"
+          aria-selected={officeSearch.view === "settings"}
+          onClick={() => void navigate({ search: { view: "settings" } })}
+        >
+          Settings
+        </Button>
+      </div>
+      {notice ? <p className="rounded-xl bg-ok-soft px-3 py-3 text-sm text-ok" role="status">{notice}</p> : null}
+
+      {officeSearch.view === "history" ? (
+        <SectionRosterBoard
+          sections={orderedSections}
+          students={students}
+          attendance={attendance}
+          date={historyDate}
+          onDateChange={setHistoryDate}
+        />
+      ) : null}
+      <div className="grid gap-5">
+      {officeSearch.view === "dashboard" ? (
+        <section className="rounded-3xl bg-paper p-5 shadow-border sm:p-6">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted">Office</p>
+          <h2 className="mt-1 font-display text-2xl font-semibold">School Office</h2>
+          <p className="mt-2 max-w-2xl text-sm text-muted">
+            Your sections, student rosters, daily attendance, and school settings are organized into separate views.
+            Choose a workspace above to get started.
+          </p>
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Stat label="Sections" value={sections.length} />
+            <Stat label="Students" value={students.length} />
+            <Stat label="Today’s gate events" value={today.length} />
+            <Stat label="Alerts" value={alerts.length} />
+          </div>
+          <section className="mt-6" aria-labelledby="absence-ranking-title">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <h3 id="absence-ranking-title" className="font-display text-lg font-semibold">Most absences by section</h3>
+                <p className="mt-1 text-xs text-muted">Students are ranked by distinct dates marked absent.</p>
+              </div>
+              <span className="text-xs text-muted">{absenceCards.length} sections</span>
+            </div>
+            {absenceCards.length === 0 ? (
+              <p className="rounded-2xl border border-line bg-canvas/50 p-4 text-sm text-muted">Create sections and record attendance to see absence rankings.</p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {absenceCards.map(({ section, students: absentees }) => (
+                  <article key={section.id} className="rounded-2xl border border-line bg-canvas/50 p-4">
+                    <header className="flex items-start justify-between gap-2 border-b border-line pb-2">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">Grade {section.grade}</p>
+                        <h4 className="font-display text-base font-semibold">{section.name}</h4>
+                      </div>
+                      <span className="rounded-full bg-paper px-2.5 py-1 text-[10px] font-semibold text-muted">{studentsInSection(students, section.id).length} students</span>
+                    </header>
+                    {absentees.length === 0 ? (
+                      <p className="pt-3 text-xs text-muted">No absences recorded.</p>
+                    ) : (
+                      <ol className="divide-y divide-line">
+                        {absentees.slice(0, 3).map(({ student, daysAbsent }, index) => (
+                          <li key={student.id} className="flex items-center justify-between gap-2 py-2.5">
+                            <span className="min-w-0">
+                              <span className="mr-2 inline-flex size-5 items-center justify-center rounded-full bg-paper text-[10px] font-semibold text-primary">{index + 1}</span>
+                              <span className="text-sm font-medium">{student.name}</span>
+                              <span className="block pl-7 text-[10px] text-muted">{student.code}</span>
+                            </span>
+                            <span className="shrink-0 rounded-full bg-rose-soft px-2 py-1 text-[10px] font-semibold text-rose">{daysAbsent} {daysAbsent === 1 ? "day" : "days"}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        </section>
+      ) : null}
+
+      {officeSearch.view === "sections" ? (
+        <>
+      <div className="rounded-3xl bg-paper p-5 shadow-border">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="font-display text-xl font-semibold">Gate History by Section</h2>
+            <p className="mt-1 text-sm text-muted">Choose a section to identify its students’ gate events.</p>
+          </div>
+          <p className="text-sm text-muted">{currentDate}</p>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {orderedSections.map((section) => {
+            const sectionEvents = today.filter((event) => {
+              const student = students.find((item) => item.id === event.studentId);
+              return student?.sectionId === section.id;
+            });
+            const selected = activeLogSectionId === section.id;
+            return (
+              <button
+                key={section.id}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => setFilterSection(section.id)}
+                className={`min-h-14 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                  selected ? "bg-navy text-primary-fg" : "bg-canvas/80 text-ink hover:bg-sky-soft/60"
+                }`}
+              >
+                <span className="block font-medium">Grade {section.grade} · {section.name}</span>
+                <span className={`text-xs ${selected ? "text-primary-fg/80" : "text-muted"}`}>
+                  {sectionEvents.length} event{sectionEvents.length === 1 ? "" : "s"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -252,13 +438,16 @@ function OfficeBody() {
 
       <div className="flex flex-wrap gap-2">
         <Button
-          variant="gold"
+          variant="primary"
+          disabled={!canMarkAbsencesForDate || !activeLogSectionId}
           onClick={() => {
+            const scope = sections.find((section) => section.id === activeLogSectionId);
+            const scopeLabel = scope ? sectionLabel(scope) : "the selected section";
+            if (!confirm(`Record missing arrivals for ${scopeLabel} on ${currentDate}? Students who already checked in or already have an absence record will be left unchanged. This may also send attendance alerts to linked parents.`)) {
+              return;
+            }
             void (async () => {
-              const n = await markAbsences(filterSection || undefined);
-              const scope = filterSection
-                ? sections.find((s) => s.id === filterSection)
-                : null;
+              const n = await markAbsences(activeLogSectionId || undefined);
               setNotice(
                 n
                   ? `Recorded ${n} missing arrival${n === 1 ? "" : "s"}${scope ? ` in ${sectionLabel(scope)}` : ""}.`
@@ -267,41 +456,22 @@ function OfficeBody() {
             })();
           }}
         >
-          Mark missing arrivals
+          Mark today’s missing arrivals
         </Button>
+        {!canMarkAbsencesForDate ? (
+          <p className="self-center text-sm text-muted">
+            {`Missing arrivals close at dismissal (${school.dismissStart}); the current attendance cycle has already reset.`}
+          </p>
+        ) : null}
         <Button variant="outline" onClick={exportLog}>
           Download CSV
         </Button>
-        <Button variant="outline" onClick={exportBackup}>
-          Save backup
-        </Button>
-        <Button variant="ghost" onClick={() => fileRef.current?.click()}>
-          Restore backup
-        </Button>
-        <Button
-          variant="ghost"
-          onClick={() => {
-            if (confirm("Clear students, parents, and attendance on this laptop? The office password stays.")) {
-              clearRecords();
-              setNotice("Records cleared.");
-            }
-          }}
-        >
-          Clear records
-        </Button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/json"
-          className="hidden"
-          onChange={(e) => {
-            void onImportFile(e.target.files?.[0]);
-            e.currentTarget.value = "";
-          }}
-        />
       </div>
-      {notice ? <p className="rounded-xl bg-ok-soft px-3 py-3 text-sm text-ok">{notice}</p> : null}
+        </>
+      ) : null}
 
+      {officeSearch.view === "roster" ? (
+      <>
       <section className="rounded-3xl bg-paper p-5 shadow-border">
         <h2 className="font-display text-xl font-semibold">Sections</h2>
         <p className="mt-1 text-sm text-muted">
@@ -350,7 +520,7 @@ function OfficeBody() {
       </section>
 
       <section className="rounded-3xl bg-paper p-5 shadow-border">
-        <h2 className="font-display text-xl font-semibold">Class list</h2>
+        <h2 className="font-display text-xl font-semibold">Class List</h2>
         <p className="mt-1 text-sm text-muted">
           CSV columns include grade and section, so one file can load the whole school.
           Download the template, replace the sample rows, then import it.
@@ -386,19 +556,22 @@ function OfficeBody() {
           />
         </div>
       </section>
+      </>
+      ) : null}
 
+      {officeSearch.view === "sections" ? (
+      <>
       <section className="rounded-3xl bg-paper p-5 shadow-border">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2 className="font-display text-xl font-semibold">Gate log</h2>
-          <label className="text-xs uppercase tracking-wider text-muted">
-            Date
-            <input
-              type="date"
-              value={logDate}
-              onChange={(e) => setLogDate(e.target.value)}
-              className="mt-1 min-h-11 rounded-xl bg-canvas px-3 text-sm text-ink outline-none ring-primary focus:ring-2"
-            />
-          </label>
+        <div className="flex flex-wrap items-end justify-between gap-3 print:hidden">
+          <h2 className="font-display text-xl font-semibold">Gate History</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm text-muted">
+              {sectionLabel(sections.find((section) => section.id === activeLogSectionId) ?? { grade: "", name: "Section" })} · {currentDate}
+            </p>
+            <Button variant="outline" disabled={loggedInToday.length === 0} onClick={() => window.print()}>
+              Print logged-in list
+            </Button>
+          </div>
         </div>
         {visibleToday.length === 0 ? (
           <p className="mt-3 text-sm text-muted">No check-ins on this date in this view.</p>
@@ -418,6 +591,7 @@ function OfficeBody() {
               <tbody>
                 {visibleToday.map((row) => {
                   const student = students.find((s) => s.id === row.studentId);
+                  const genderLabelText = student?.gender ? genderLabel(student.gender) : "Gender unset";
                   return (
                     <tr key={row.id} className="border-t border-line">
                       <td className="py-2.5 tabular-nums">
@@ -426,7 +600,10 @@ function OfficeBody() {
                           minute: "2-digit",
                         })}
                       </td>
-                      <td className="py-2.5">{student?.name ?? "—"}</td>
+                      <td className="py-2.5">
+                        <div className="font-medium">{student?.name ?? "—"}</div>
+                        <div className="text-xs text-muted">{genderLabelText}</div>
+                      </td>
                       <td className="py-2.5">
                         {student ? `G${student.grade} ${student.section}` : "—"}
                       </td>
@@ -443,7 +620,41 @@ function OfficeBody() {
           </div>
         )}
       </section>
+      <section className="print-attendance" aria-label="Printable logged-in student list">
+        <h1>{school.name}</h1>
+        <h2>Students Logged In</h2>
+        <p>
+          {sectionLabel(sections.find((section) => section.id === activeLogSectionId) ?? { grade: "", name: "Section" })}
+          {" · "}{currentDate}
+        </p>
+        <p>Total checked in: {loggedInToday.length}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Student name</th>
+              <th>Gender</th>
+              <th>Student ID</th>
+              <th>Check-in time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loggedInToday.map(({ event, student }, index) => (
+              <tr key={event.id}>
+                <td>{index + 1}</td>
+                <td>{student?.name ?? "Removed student"}</td>
+                <td>{student?.gender ? genderLabel(student.gender) : "—"}</td>
+                <td>{student?.code ?? "—"}</td>
+                <td>{new Date(event.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      </>
+      ) : null}
 
+      {officeSearch.view === "roster" ? (
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="rounded-3xl bg-paper p-5 shadow-border">
           <h2 className="font-display text-xl font-semibold">Add student</h2>
@@ -452,6 +663,18 @@ function OfficeBody() {
             <label className="text-xs uppercase tracking-wider text-muted">
               Section
               <SectionPicker sections={sections} value={addSectionId} onChange={setAddSectionId} />
+            </label>
+            <label className="text-xs uppercase tracking-wider text-muted">
+              Gender
+              <select
+                name="gender"
+                required
+                defaultValue="male"
+                className="mt-1 min-h-11 w-full rounded-xl bg-canvas px-3 text-sm text-ink outline-none ring-primary focus:ring-2"
+              >
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
             </label>
             <Field name="pin" label="PIN" placeholder="Leave blank to auto-assign" />
             <label className="text-xs uppercase tracking-wider text-muted">
@@ -485,64 +708,140 @@ function OfficeBody() {
           </form>
         </section>
       </div>
+      ) : null}
 
+      {officeSearch.view === "roster" ? (
       <section className="rounded-3xl bg-paper p-5 shadow-border">
-        <h2 className="font-display text-xl font-semibold">Roster</h2>
-        {visibleStudents.length === 0 ? (
-          <p className="mt-3 text-sm text-muted">No students in this view yet.</p>
-        ) : (
-          <ul className="mt-3 divide-y divide-line">
-            {visibleStudents.map((s) => (
-              <li key={s.id} className="grid gap-3 py-3 sm:grid-cols-[1fr_auto] sm:items-center">
-                <span>
-                  <span className="font-medium">{s.name}</span>
-                  <span className="block text-xs text-muted">
-                    Grade {s.grade} {s.section} · {s.code} · PIN {s.pin} · faces {s.descriptors.length} ·{" "}
-                    {parents.find((p) => p.id === s.parentId)?.name ?? "no parent"}
-                    {parents.find((p) => p.id === s.parentId)?.phone
-                      ? ` · ${parents.find((p) => p.id === s.parentId)?.phone}`
-                      : ""}
+        <div className="mb-5">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="font-display text-xl font-semibold">Roster by Section</h2>
+              <p className="mt-1 text-sm text-muted">Choose a section to show only its students.</p>
+              <p className="mt-1 text-xs text-muted">
+                PINs and face data are hidden from the roster view. Share a student PIN privately, and enroll faces only with consent.
+              </p>
+            </div>
+            <p className="text-xs text-muted">{sections.length} sections</p>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {orderedSections.map((section) => {
+              const count = studentsInSection(students, section.id).length;
+                const selected = activeRosterSectionId === section.id;
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  aria-pressed={selected}
+                    onClick={() => setRosterSectionId(section.id)}
+                  className={`min-h-14 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                    selected
+                      ? "bg-primary text-primary-fg"
+                      : "bg-canvas/80 text-ink hover:bg-sky-soft/60"
+                  }`}
+                >
+                  <span className="block font-medium">Grade {section.grade} · {section.name}</span>
+                  <span className={`text-xs ${selected ? "text-primary-fg/80" : "text-muted"}`}>
+                    {count} student{count === 1 ? "" : "s"}
+                    {section.adviser ? ` · ${section.adviser}` : ""}
                   </span>
-                </span>
-                <span className="flex flex-wrap items-center gap-2">
-                  <select
-                    className="min-h-10 rounded-xl bg-canvas px-2 text-xs text-ink"
-                    value={s.sectionId}
-                    onChange={(e) => {
-                      const result = moveStudent(s.id, e.target.value);
-                      if ("error" in result) setNotice(result.error);
-                    }}
-                    aria-label={`Section for ${s.name}`}
-                  >
-                    {orderedSections.map((sec) => (
-                      <option key={sec.id} value={sec.id}>
-                        {sectionLabel(sec)}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    className="min-h-10 rounded-xl bg-canvas px-2 text-xs text-ink"
-                    value={s.parentId ?? ""}
-                    onChange={(e) => linkParent(s.id, e.target.value || null)}
-                    aria-label={`Parent for ${s.name}`}
-                  >
-                    <option value="">No parent</option>
-                    {parents.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  <Button variant="outline" className="min-h-10 text-xs" onClick={() => setEnrollId(s.id)}>
-                    Enroll face
-                  </Button>
-                  <Button variant="ghost" className="min-h-10 text-xs" onClick={() => removeStudent(s.id)}>
-                    Remove
-                  </Button>
-                </span>
-              </li>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="font-display text-xl font-semibold">
+              {activeRosterSection ? `Roster — ${sectionLabel(activeRosterSection)}` : "Roster"}
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              Showing {searchedStudents.length} of {rosterStudents.length} student{rosterStudents.length === 1 ? "" : "s"} in this section.
+            </p>
+            <p className="mt-1 text-xs text-muted">Section, parent, and face enrollment are permanent after enrollment.</p>
+          </div>
+          <label className="w-full text-xs uppercase tracking-wider text-muted sm:max-w-sm">
+            Search Student
+            <input
+              type="search"
+              value={rosterQuery}
+              onChange={(event) => setRosterQuery(event.target.value)}
+              placeholder="Name, student code, grade, or section"
+              className="mt-1 min-h-11 w-full rounded-xl bg-canvas px-3 text-sm normal-case tracking-normal text-ink outline-none ring-primary placeholder:text-muted/80 focus:ring-2"
+            />
+          </label>
+        </div>
+        {searchedStudents.length === 0 ? (
+          <p className="mt-3 text-sm text-muted">
+            {rosterStudents.length === 0
+              ? activeRosterSectionId
+                ? "No students are assigned to this section yet."
+                : "Create a section to view its roster."
+              : `No students match “${rosterQuery.trim()}”.`}
+          </p>
+        ) : (
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            {rosterGroups.map((group) => (
+              <div key={group.key} className="rounded-2xl border border-line bg-canvas/40 p-3">
+                <div className="mb-2 flex items-center justify-between border-b border-line pb-1">
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-muted">{group.label}</h3>
+                  <span className="rounded-full bg-canvas px-2 py-0.5 text-xs text-muted">{group.students.length}</span>
+                </div>
+                <ul className="divide-y divide-line">
+                  {group.students.map((s) => (
+                    <li key={s.id} className="grid gap-3 py-3 sm:grid-cols-[1fr_auto] sm:items-center">
+                      <span>
+                        <span className="font-medium">{s.name}</span>
+                        <span className="block text-xs text-muted">
+                          Grade {s.grade} {s.section} · {s.code} · parent linked: {s.parentId ? "yes" : "no"}
+                        </span>
+                      </span>
+                      <span className="flex flex-wrap items-center gap-2">
+                        {s.gender ? (
+                          <span className="rounded-full bg-sky-soft px-2.5 py-1 text-xs font-semibold text-primary">
+                            {genderLabel(s.gender)}
+                          </span>
+                        ) : (
+                          <label className="flex items-center gap-2 rounded-full border border-line bg-canvas px-2.5 py-1 text-xs text-muted">
+                            <span>Set gender</span>
+                            <select
+                              value=""
+                              aria-label={`Set gender for ${s.name}`}
+                              className="bg-transparent text-xs text-ink outline-none"
+                              onChange={(event) => {
+                                const next = event.target.value;
+                                if (next === "male" || next === "female") {
+                                  const result = setStudentGender(s.id, next);
+                                  if ("error" in result) {
+                                    setNotice(result.error);
+                                  }
+                                }
+                              }}
+                            >
+                              <option value="">Select</option>
+                              <option value="male">Male</option>
+                              <option value="female">Female</option>
+                            </select>
+                          </label>
+                        )}
+                        {s.descriptors.length === 0 ? (
+                          <Button variant="outline" className="min-h-10 text-xs" onClick={() => setEnrollId(s.id)}>
+                            Enroll face
+                          </Button>
+                        ) : (
+                          <span className="rounded-full bg-ok-soft px-2.5 py-1 text-xs font-semibold text-ok">
+                            Face enrolled
+                          </span>
+                        )}
+                        <Button variant="ghost" className="min-h-10 text-xs" onClick={() => removeStudent(s.id)}>
+                          Remove
+                        </Button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
         {enrollId ? (
           <div className="mt-4 max-w-sm">
@@ -563,37 +862,66 @@ function OfficeBody() {
           </div>
         ) : null}
       </section>
+      ) : null}
 
+      {officeSearch.view === "settings" ? (
       <section className="rounded-3xl bg-paper p-5 shadow-border">
-        <h2 className="font-display text-xl font-semibold">Automatic parent alerts</h2>
+        <h2 className="font-display text-xl font-semibold">Automatic Parent Alerts</h2>
         <p className="mt-1 text-sm text-muted">
-          On every check-in, check-out, or missing-arrival mark, the office sends email through the
-          school Gmail and SMS through Semaphore. Leave a field blank to skip that channel.
+          Choose which attendance events trigger a parent alert. Delivery credentials are stored on the server, not in this browser.
         </p>
         <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={onNotify}>
-          <Field name="emailUser" label="School Gmail" type="email" defaultValue={school.notify?.emailUser} placeholder="school@gmail.com" />
-          <Field
-            name="emailPass"
-            label="Gmail app password"
-            type="password"
-            placeholder={school.notify?.emailPass ? "Saved on this laptop" : "16-character app password"}
-          />
-          <Field name="emailHost" label="Mail server" defaultValue={school.notify?.emailHost || "smtp.gmail.com"} />
-          <Field
-            name="smsKey"
-            label="Semaphore SMS key"
-            type="password"
-            placeholder={school.notify?.smsKey ? "Saved on this laptop" : "API key from semaphore.co"}
-          />
-          <Field name="smsSender" label="SMS sender name" defaultValue={school.notify?.smsSender || "SCNGATE"} />
+          <fieldset className="grid gap-2 rounded-2xl border p-4 sm:col-span-2">
+            <legend className="px-1 text-xs font-semibold uppercase tracking-wider text-muted">Notify Parents</legend>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="notifyCheckIn" defaultChecked={school.notify?.checkIn ?? true} /> Student checks in (on time or late)</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="notifyCheckOut" defaultChecked={school.notify?.checkOut ?? false} /> Student checks out</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="notifyAbsence" defaultChecked={school.notify?.absence ?? false} /> Student is marked absent</label>
+          </fieldset>
+          <p className="rounded-xl bg-canvas p-3 text-sm text-muted sm:col-span-2">
+            Email and SMS service credentials are configured as private server environment variables. This app never asks for or stores those secrets in browser storage.
+          </p>
           <div className="sm:col-span-2">
             <Button type="submit">Save alert settings</Button>
           </div>
         </form>
       </section>
+      ) : null}
 
+      {officeSearch.view === "settings" ? (
       <section className="rounded-3xl bg-paper p-5 shadow-border">
-        <h2 className="font-display text-xl font-semibold">Hours</h2>
+        <h2 className="font-display text-xl font-semibold">Data and Records</h2>
+        <p className="mt-1 text-sm text-muted">Save a backup before moving this office data to another device.</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button variant="outline" onClick={exportBackup}>Save backup</Button>
+          <Button variant="ghost" onClick={() => fileRef.current?.click()}>Restore backup</Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              if (confirm("Clear students, parents, and attendance on this laptop? The office password stays.")) {
+                clearRecords();
+                setNotice("Records cleared.");
+              }
+            }}
+          >
+            Clear records
+          </Button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json"
+            className="hidden"
+            onChange={(event) => {
+              void onImportFile(event.target.files?.[0]);
+              event.currentTarget.value = "";
+            }}
+          />
+        </div>
+      </section>
+      ) : null}
+
+      {officeSearch.view === "settings" ? (
+      <section className="rounded-3xl bg-paper p-5 shadow-border">
+        <h2 className="font-display text-xl font-semibold">Class Hours</h2>
         <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={onHours}>
           <Field name="schoolName" label="School name" defaultValue={school.name} />
           <Field name="campus" label="Campus" defaultValue={school.campus} />
@@ -608,9 +936,11 @@ function OfficeBody() {
           </div>
         </form>
       </section>
+      ) : null}
 
+      {officeSearch.view === "settings" ? (
       <section className="rounded-3xl bg-paper p-5 shadow-border">
-        <h2 className="font-display text-xl font-semibold">Alerts sent to parents</h2>
+        <h2 className="font-display text-xl font-semibold">Alerts Sent to Parents</h2>
         {alerts.length === 0 ? (
           <p className="mt-3 text-sm text-muted">Alerts appear after a gate scan or a missing-arrival mark.</p>
         ) : (
@@ -626,16 +956,343 @@ function OfficeBody() {
                 </span>
                 <button
                   type="button"
+                  disabled={a.emailStatus === "sent" && a.smsStatus === "sent" || a.emailStatus === "sending" || a.smsStatus === "sending"}
                   className="mt-2 text-xs font-medium text-primary"
                   onClick={() => void pushNotice(a.id)}
                 >
-                  Send again
+                  Retry undelivered channels
                 </button>
               </li>
             ))}
           </ul>
         )}
       </section>
+      ) : null}
+      </div>
+    </div>
+  );
+}
+
+function SectionRosterBoard({
+  sections,
+  students,
+  attendance,
+  date,
+  onDateChange,
+}: {
+  sections: ReturnType<typeof sortSections>;
+  students: ReturnType<typeof useSchool.getState>["students"];
+  attendance: ReturnType<typeof useSchool.getState>["attendance"];
+  date: string;
+  onDateChange: (date: string) => void;
+}) {
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const [historyEnd, setHistoryEnd] = useState(todayISO());
+  const [historyStart, setHistoryStart] = useState(() => {
+    const start = new Date();
+    start.setDate(start.getDate() - 6);
+    return todayISO(start);
+  });
+  const [historySectionId, setHistorySectionId] = useState(sections[0]?.id ?? "");
+  const dayEvents = attendance.filter((event) => event.date === date);
+  const historyEvents = attendance
+    .filter((event) => event.date >= historyStart && event.date <= historyEnd)
+    .filter((event) => {
+      if (!historySectionId) return false;
+      const student = students.find((item) => item.id === event.studentId);
+      return student?.sectionId === historySectionId;
+    })
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+
+  function exportHistory() {
+    const header = ["Date", "Time", "Student", "Code", "Grade", "Section", "Direction", "Method", "Result"];
+    const rows = historyEvents.map((event) => {
+      const student = students.find((item) => item.id === event.studentId);
+      return [
+        event.date,
+        new Date(event.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        student?.name ?? "Removed student",
+        student?.code ?? "",
+        student?.grade ?? "",
+        student?.section ?? "",
+        event.direction,
+        event.method,
+        STATUS_LABEL[event.status],
+      ]
+        .map((value) => `"${String(value).replaceAll('"', '""')}"`)
+        .join(",");
+    });
+    downloadText(
+      `scn-attendance-history-${historyStart}-to-${historyEnd}.csv`,
+      [header.join(","), ...rows].join("\n"),
+      "text/csv;charset=utf-8",
+    );
+  }
+
+  return (
+    <div className="grid gap-4">
+      <section className="flex flex-wrap items-end justify-between gap-3 rounded-3xl bg-paper p-5 shadow-border">
+        <div>
+          <h2 className="font-display text-xl font-semibold">Attendance History by Section</h2>
+          <p className="mt-1 text-sm text-muted">
+            Choose a date to inspect each section’s recorded attendance. Click "View attendance" to see the students and their status for that date.
+          </p>
+        </div>
+        <label className="text-xs uppercase tracking-wider text-muted">
+          Attendance date
+          <input
+            type="date"
+            value={date}
+            onChange={(event) => onDateChange(event.target.value)}
+            className="mt-1 min-h-11 rounded-xl bg-canvas px-3 text-sm text-ink outline-none ring-primary focus:ring-2"
+          />
+        </label>
+      </section>
+
+      {sections.length === 0 ? (
+        <section className="rounded-3xl bg-paper p-6 text-sm text-muted shadow-border">
+          No sections yet. Create one in the Rosters tab to get started.
+        </section>
+      ) : (
+        <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {sections.map((section) => {
+            const roster = studentsInSection(students, section.id);
+            const sectionAttendance = roster.map((student) => {
+              const events = dayEvents.filter((event) => event.studentId === student.id);
+              return {
+                student,
+                hasArrived: events.some((event) => event.direction === "in"),
+                hasAbsence: events.some((event) => event.status === "absent"),
+              };
+            });
+            const presentCount = sectionAttendance.filter((item) => item.hasArrived).length;
+            const absentCount = sectionAttendance.filter((item) => !item.hasArrived && item.hasAbsence).length;
+            const notCheckedInCount = roster.length - presentCount - absentCount;
+            const maleCount = roster.filter((student) => student.gender === "male").length;
+            const femaleCount = roster.filter((student) => student.gender === "female").length;
+            const groupedAttendance = groupRosterByGender(sortRosterStudents(roster, "name"));
+            return (
+              <section key={section.id} className="overflow-hidden rounded-3xl bg-paper shadow-border">
+                <header className="border-b border-line bg-canvas/70 px-4 py-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs uppercase tracking-wider text-muted">Grade {section.grade}</p>
+                      <h3 className="font-display text-lg font-semibold">{section.name}</h3>
+                      {section.adviser ? <p className="text-xs text-muted">{section.adviser}</p> : null}
+                    </div>
+                    <span className="rounded-full bg-paper px-2.5 py-1 text-xs text-muted">
+                      {presentCount}/{roster.length} present
+                    </span>
+                  </div>
+                </header>
+                <div className="grid grid-cols-3 gap-2 px-4 pt-4" aria-label={`Attendance summary for Grade ${section.grade} ${section.name}`}>
+                  <SectionAttendanceStat label="Present" value={presentCount} tone="text-ok" />
+                  <SectionAttendanceStat label="Absent marked" value={absentCount} tone="text-rose" />
+                  <SectionAttendanceStat label="Not checked in" value={notCheckedInCount} tone="text-muted" />
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 px-4 pb-4">
+                  <div className="rounded-2xl bg-sky-soft/70 px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wider text-muted">Male</p>
+                    <p className="mt-1 text-sm font-semibold text-primary">{maleCount}</p>
+                  </div>
+                  <div className="rounded-2xl bg-canvas px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wider text-muted">Female</p>
+                    <p className="mt-1 text-sm font-semibold text-primary">{femaleCount}</p>
+                  </div>
+                </div>
+                <div className="p-4">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    aria-expanded={Boolean(openSections[section.id])}
+                    onClick={() =>
+                      setOpenSections((current) => ({
+                        ...current,
+                        [section.id]: !current[section.id],
+                      }))
+                    }
+                  >
+                    {openSections[section.id] ? "Hide attendance" : "View attendance"}
+                  </Button>
+                </div>
+                {openSections[section.id] ? (
+                  roster.length === 0 ? (
+                    <p className="border-t border-line px-4 py-4 text-sm text-muted">
+                      No students assigned to this section yet.
+                    </p>
+                  ) : (
+                    <div className="border-t border-line px-4 py-4">
+                      <div className="space-y-3">
+                        {groupedAttendance.map((group) => (
+                          <div key={group.key} className="rounded-2xl border border-line bg-canvas/40 p-3">
+                            <div className="mb-2 flex items-center justify-between border-b border-line pb-1">
+                              <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted">{group.label}</h4>
+                              <span className="rounded-full bg-canvas px-2 py-0.5 text-[10px] text-muted">{group.students.length}</span>
+                            </div>
+                            <ul className="divide-y divide-line">
+                              {group.students.map((student) => {
+                                const events = dayEvents
+                                  .filter((event) => event.studentId === student.id)
+                                  .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+                                const checkedInEvent = events.find((event) => event.direction === "in");
+                                const absentEvent = events.find((event) => event.status === "absent");
+                                const latestEvent = events[0];
+                                const status = checkedInEvent
+                                  ? latestEvent?.direction === "out"
+                                    ? "Checked out"
+                                    : "Checked in"
+                                  : absentEvent
+                                    ? "Absent recorded"
+                                    : "Not checked in";
+                                const tone = checkedInEvent
+                                  ? "bg-ok-soft text-ok"
+                                  : absentEvent
+                                    ? "bg-rose-soft text-rose"
+                                    : "bg-canvas text-muted";
+                                return (
+                                  <li key={student.id} className="flex items-center justify-between gap-2 py-3">
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block text-sm font-medium">{student.name}</span>
+                                      <span className="text-xs text-muted">
+                                        {student.gender ? `${genderLabel(student.gender)} · ` : ""}{student.code}
+                                      </span>
+                                    </span>
+                                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${tone}`}>
+                                      {status}
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
+      )}
+
+      <section className="rounded-3xl bg-paper p-5 shadow-border">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="font-display text-xl font-semibold">Attendance history</h2>
+            <p className="mt-1 text-sm text-muted">
+              Review recorded check-ins, check-outs, and absences by date and section.
+            </p>
+          </div>
+          <Button variant="outline" disabled={historyEvents.length === 0} onClick={exportHistory}>
+            Export filtered history
+          </Button>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <label className="text-xs uppercase tracking-wider text-muted">
+            From
+            <input
+              type="date"
+              value={historyStart}
+              max={historyEnd}
+              onChange={(event) => {
+                const nextStart = event.target.value;
+                setHistoryStart(nextStart);
+                if (nextStart > historyEnd) setHistoryEnd(nextStart);
+              }}
+              className="mt-1 min-h-11 w-full rounded-xl bg-canvas px-3 text-sm text-ink outline-none ring-primary focus:ring-2"
+            />
+          </label>
+          <label className="text-xs uppercase tracking-wider text-muted">
+            To
+            <input
+              type="date"
+              value={historyEnd}
+              min={historyStart}
+              max={todayISO()}
+              onChange={(event) => {
+                const nextEnd = event.target.value;
+                setHistoryEnd(nextEnd);
+                if (nextEnd < historyStart) setHistoryStart(nextEnd);
+              }}
+              className="mt-1 min-h-11 w-full rounded-xl bg-canvas px-3 text-sm text-ink outline-none ring-primary focus:ring-2"
+            />
+          </label>
+          <label className="text-xs uppercase tracking-wider text-muted">
+            Section
+            <SectionPicker
+              sections={sections}
+              value={historySectionId}
+              onChange={setHistorySectionId}
+            />
+          </label>
+        </div>
+        <p className="mt-3 text-xs text-muted">
+          {historySectionId
+            ? `${historyEvents.length} attendance record${historyEvents.length === 1 ? "" : "s"} · ${historyStart} to ${historyEnd}`
+            : "Choose a section to view its attendance history."}
+        </p>
+        {historyEvents.length === 0 ? (
+          <p className="mt-3 rounded-2xl bg-canvas/70 px-4 py-4 text-sm text-muted">
+            {historySectionId
+              ? "No attendance records match this date range for the selected section."
+              : sections.length
+                ? "Select a section above to see its attendance records."
+                : "Create a section to start viewing attendance history."}
+          </p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[38rem] text-left text-sm">
+              <thead className="text-xs uppercase tracking-wider text-muted">
+                <tr>
+                  <th className="py-2 font-medium">Date / time</th>
+                  <th className="py-2 font-medium">Student</th>
+                  <th className="py-2 font-medium">Section</th>
+                  <th className="py-2 font-medium">Event</th>
+                  <th className="py-2 font-medium">Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyEvents.map((event) => {
+                  const student = students.find((item) => item.id === event.studentId);
+                  const genderText = student?.gender ? genderLabel(student.gender) : "Gender unset";
+                  return (
+                    <tr key={event.id} className="border-t border-line">
+                      <td className="py-2.5 tabular-nums">
+                        {event.date} · {new Date(event.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </td>
+                      <td className="py-2.5">
+                        <div className="font-medium">{student?.name ?? "Removed student"}</div>
+                        <div className="text-xs text-muted">{genderText}</div>
+                      </td>
+                      <td className="py-2.5">{student ? `Grade ${student.grade} ${student.section}` : "—"}</td>
+                      <td className="py-2.5 capitalize">{event.direction === "none" ? "absence" : event.direction} · {event.method}</td>
+                      <td className="py-2.5"><StatusBadge status={event.status} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function SectionAttendanceStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-xl bg-canvas/80 px-2 py-2 text-center">
+      <p className={`font-display text-xl font-semibold tabular-nums ${tone}`}>{value}</p>
+      <p className="text-[10px] leading-tight text-muted sm:text-xs">{label}</p>
     </div>
   );
 }

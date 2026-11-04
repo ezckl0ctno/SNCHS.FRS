@@ -11,7 +11,7 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: APP_NAME },
-      { name: "theme-color", content: "#173b66" },
+      { name: "theme-color", content: "#0b2545" },
       {
         name: "description",
         content:
@@ -19,7 +19,8 @@ export const Route = createRootRoute({
       },
     ],
     links: [
-      { rel: "icon", type: "image/png", href: "/scnhs-logo.png" },
+      { rel: "icon", type: "image/png", href: "/scnhs-logo.png?v=20260929" },
+      { rel: "shortcut icon", type: "image/png", href: "/scnhs-logo.png?v=20260929" },
       { rel: "stylesheet", href: appCss },
       { rel: "manifest", href: "/__grok/manifest.webmanifest" },
       { rel: "apple-touch-icon", href: "/scnhs-logo.png" },

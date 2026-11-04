@@ -2,11 +2,16 @@ import { STATUS_LABEL } from "@/lib/school/rules";
 import type { GateStatus } from "@/lib/school/types";
 import { cn } from "@/lib/utils";
 
+/*
+ * On time, left early and absent keep their green / red semantics — a status
+ * badge has to stay readable at a glance. Late and dismissed, which carry no
+ * warning, use the sky blue and navy of the component scheme.
+ */
 const tone: Record<GateStatus, string> = {
   on_time: "bg-ok-soft text-ok",
-  late: "bg-gold-soft text-gold-dark",
+  late: "bg-sky-soft text-navy-dark",
   early_exit: "bg-rose-soft text-rose",
-  dismissed: "bg-leaf text-primary-dark",
+  dismissed: "bg-navy/10 text-navy-dark",
   absent: "bg-rose-soft text-rose",
 };
 

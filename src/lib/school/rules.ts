@@ -13,6 +13,30 @@ function minutes(hhmm: string) {
   return h * 60 + m;
 }
 
+export function isBeforeDismissal(school: SchoolSettings, date = new Date()) {
+  return date.getHours() * 60 + date.getMinutes() < minutes(school.dismissStart);
+}
+
+export function attendanceCycleStart(school: SchoolSettings, date = new Date()) {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  const dismissal = minutes(school.dismissStart);
+  if (!isBeforeDismissal(school, date)) start.setHours(Math.floor(dismissal / 60), dismissal % 60, 0, 0);
+  return start;
+}
+
+export function currentAttendanceEvents<T extends { date: string; createdAt: string }>(
+  events: T[],
+  school: SchoolSettings,
+  date = new Date(),
+) {
+  const cycleStart = attendanceCycleStart(school, date);
+  const day = todayISO(date);
+  return events.filter(
+    (event) => event.date === day && new Date(event.createdAt).getTime() >= cycleStart.getTime(),
+  );
+}
+
 export function classifyIn(school: SchoolSettings, date = new Date()): GateStatus {
   const t = date.getHours() * 60 + date.getMinutes();
   if (t <= minutes(school.arrivalEnd)) return "on_time";

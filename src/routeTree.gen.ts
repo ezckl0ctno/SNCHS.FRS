@@ -11,9 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as GateRouteImport } from './routes/gate'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as OfficeRouteImport } from './routes/office'
 import { Route as ParentRouteImport } from './routes/parent'
 import { Route as StudentRouteImport } from './routes/student'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -23,6 +25,11 @@ const IndexRoute = IndexRouteImport.update({
 const GateRoute = GateRouteImport.update({
   id: '/gate',
   path: '/gate',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OfficeRoute = OfficeRouteImport.update({
@@ -40,43 +47,78 @@ const StudentRoute = StudentRouteImport.update({
   path: '/student',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/gate': typeof GateRoute
+  '/login': typeof LoginRoute
   '/office': typeof OfficeRoute
   '/parent': typeof ParentRoute
   '/student': typeof StudentRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/gate': typeof GateRoute
+  '/login': typeof LoginRoute
   '/office': typeof OfficeRoute
   '/parent': typeof ParentRoute
   '/student': typeof StudentRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/gate': typeof GateRoute
+  '/login': typeof LoginRoute
   '/office': typeof OfficeRoute
   '/parent': typeof ParentRoute
   '/student': typeof StudentRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/gate' | '/office' | '/parent' | '/student'
+  fullPaths:
+    | '/'
+    | '/gate'
+    | '/login'
+    | '/office'
+    | '/parent'
+    | '/student'
+    | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/gate' | '/office' | '/parent' | '/student'
-  id: '__root__' | '/' | '/gate' | '/office' | '/parent' | '/student'
+  to:
+    | '/'
+    | '/gate'
+    | '/login'
+    | '/office'
+    | '/parent'
+    | '/student'
+    | '/api/auth/$'
+  id:
+    | '__root__'
+    | '/'
+    | '/gate'
+    | '/login'
+    | '/office'
+    | '/parent'
+    | '/student'
+    | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   GateRoute: typeof GateRoute
+  LoginRoute: typeof LoginRoute
   OfficeRoute: typeof OfficeRoute
   ParentRoute: typeof ParentRoute
   StudentRoute: typeof StudentRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -93,6 +135,13 @@ declare module '@tanstack/react-router' {
       path: '/gate'
       fullPath: '/gate'
       preLoaderRoute: typeof GateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/office': {
@@ -116,15 +165,24 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StudentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   GateRoute: GateRoute,
+  LoginRoute: LoginRoute,
   OfficeRoute: OfficeRoute,
   ParentRoute: ParentRoute,
   StudentRoute: StudentRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

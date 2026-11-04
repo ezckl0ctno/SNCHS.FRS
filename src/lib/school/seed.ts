@@ -1,11 +1,9 @@
 import type { NotifySettings, SchoolState } from "./types";
 
 export const emptyNotify = (): NotifySettings => ({
-  emailUser: "",
-  emailPass: "",
-  emailHost: "smtp.gmail.com",
-  smsKey: "",
-  smsSender: "SCNGATE",
+  checkIn: true,
+  checkOut: false,
+  absence: false,
 });
 
 export function seedState(): SchoolState {

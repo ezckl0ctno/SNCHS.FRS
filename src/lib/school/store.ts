@@ -2,12 +2,15 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { hashSecret } from "./crypto";
 import { matchFace } from "./face";
+import { genderLabel, parseGender } from "./gender";
 import { dispatchNotice } from "./notify";
+import { saveSharedSchoolState, sharedSchoolSnapshot } from "./shared-state";
 import { emptyNotify, seedState } from "./seed";
 import { findSection, sectionKey, sortSections } from "./sections";
 import {
   classifyIn,
   classifyOut,
+  currentAttendanceEvents,
   parentMessage,
   todayISO,
 } from "./rules";
@@ -16,6 +19,7 @@ import type {
   AttendanceEvent,
   ClassRow,
   Direction,
+  Gender,
   NotifySettings,
   ParentAccount,
   SchoolSection,
@@ -26,6 +30,10 @@ import type {
 
 function uid() {
   return crypto.randomUUID();
+}
+
+function normalizeStudentCode(code: string) {
+  return code.trim().replace(/^STU-(\d+)$/i, "STUDENTS-$1").toUpperCase();
 }
 
 function nextStudentNumber(students: Student[]) {
@@ -49,9 +57,10 @@ function hydrateStudent(raw: Partial<Student>, sections: SchoolSection[]): Stude
     grade: matched?.grade ?? grade,
     section: matched?.name ?? sectionName,
     sectionId: matched?.id ?? "",
-    code: raw.code || "",
+    code: normalizeStudentCode(raw.code || ""),
     pin: raw.pin || "",
     parentId: raw.parentId ?? null,
+    gender: parseGender(raw.gender),
     descriptors: Array.isArray(raw.descriptors) ? raw.descriptors : [],
   };
 }
@@ -82,6 +91,26 @@ function hydrateSections(
   return sortSections([...map.values()]);
 }
 
+function buildStudent(
+  students: Student[],
+  section: SchoolSection,
+  input: { name: string; pin: string; parentId: string | null; gender: Gender | null },
+): Student {
+  const n = nextStudentNumber(students);
+  return {
+    id: uid(),
+    name: input.name.trim(),
+    grade: section.grade,
+    section: section.name,
+    sectionId: section.id,
+    code: `STUDENTS-${n}`,
+    pin: input.pin.trim() || String(n),
+    parentId: input.parentId || null,
+    gender: input.gender,
+    descriptors: [],
+  };
+}
+
 function recordEvent(
   state: SchoolState,
   student: Student,
@@ -101,7 +130,13 @@ function recordEvent(
   };
   const alerts: Alert[] = [...state.alerts];
   let alert: Alert | null = null;
-  if (student.parentId) {
+  const notify = state.school.notify ?? emptyNotify();
+  const shouldNotify = direction === "in"
+    ? notify.checkIn ?? true
+    : direction === "out"
+      ? notify.checkOut ?? false
+      : notify.absence ?? false;
+  if (student.parentId && shouldNotify) {
     alert = {
       id: uid(),
       studentId: student.id,
@@ -148,13 +183,20 @@ type Actions = {
     descriptor: number[],
     direction: Exclude<Direction, "none">,
   ) => { ok: true; student: Student; event: AttendanceEvent } | { ok: false; error: string };
+  recognizeFace: (descriptor: number[]) => { ok: true; student: Student } | { ok: false; error: string };
+  autoCheckFace: (descriptor: number[]) =>
+    | { ok: true; student: Student; event: AttendanceEvent }
+    | { ok: false; error: string };
   markAbsences: (sectionId?: string) => Promise<number>;
   addStudent: (input: {
     name: string;
     sectionId: string;
     pin: string;
     parentId: string | null;
+    gender: Gender | null;
   }) => Student | { error: string };
+  /** One-time gender assignment for a student enrolled before gender was recorded. */
+  setStudentGender: (studentId: string, gender: Gender) => { ok: true; student: Student } | { error: string };
   removeStudent: (id: string) => void;
   moveStudent: (studentId: string, sectionId: string) => { ok: true } | { error: string };
   linkParent: (studentId: string, parentId: string | null) => void;
@@ -214,9 +256,9 @@ export const useSchool = create<SchoolState & Actions>()(
         const state = get();
         const section = state.sections.find((s) => s.id === sectionId);
         if (!section) return { ok: false, error: "Choose your section first." };
-        const needle = code.trim().toUpperCase();
+        const needle = normalizeStudentCode(code);
         const pinTrim = pin.trim();
-        const byCode = state.students.find((s) => s.code.toUpperCase() === needle);
+        const byCode = state.students.find((s) => normalizeStudentCode(s.code) === needle);
         if (!byCode) return { ok: false, error: "Student code or PIN did not match." };
         if (byCode.pin !== pinTrim) return { ok: false, error: "Student code or PIN did not match." };
         if (byCode.sectionId !== section.id) {
@@ -288,7 +330,7 @@ export const useSchool = create<SchoolState & Actions>()(
         const section = state.sections.find((s) => s.id === sectionId);
         if (!section) return { ok: false, error: "Choose the student’s section first." };
         const student = state.students.find(
-          (s) => s.code.toUpperCase() === code.trim().toUpperCase() && s.pin === pin.trim(),
+          (s) => normalizeStudentCode(s.code) === normalizeStudentCode(code) && s.pin === pin.trim(),
         );
         if (!student) return { ok: false, error: "Student code or PIN did not match." };
         if (student.sectionId !== section.id) {
@@ -314,6 +356,41 @@ export const useSchool = create<SchoolState & Actions>()(
             error: "No enrolled face matched. Ask the office to enroll the student’s face, then try again.",
           };
         }
+        const when = new Date();
+        const status = direction === "in" ? classifyIn(state.school, when) : classifyOut(state.school, when);
+        const recorded = recordEvent(state, hit.student, direction, status, "face", when);
+        set({ attendance: recorded.attendance, alerts: recorded.alerts });
+        if (recorded.alert) void get().pushNotice(recorded.alert.id);
+        return { ok: true, student: hit.student, event: recorded.event };
+      },
+
+      recognizeFace: (descriptor) => {
+        const hit = matchFace(get().students, descriptor);
+        return hit
+          ? { ok: true, student: hit.student }
+          : { ok: false, error: "No enrolled face matched yet." };
+      },
+
+      autoCheckFace: (descriptor) => {
+        const state = get();
+        const hit = matchFace(state.students, descriptor);
+        if (!hit) {
+          return { ok: false, error: "No enrolled face matched yet." };
+        }
+        const studentEvents = currentAttendanceEvents(
+          state.attendance.filter((event) => event.studentId === hit.student.id),
+          state.school,
+        );
+        const hasIn = studentEvents.some((event) => event.direction === "in");
+        const hasAbsence = studentEvents.some((event) => event.status === "absent");
+        const latestEvent = [...studentEvents].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+        if (latestEvent && Date.now() - new Date(latestEvent.createdAt).getTime() < 30_000) {
+          return { ok: false, error: `${hit.student.name} was just recorded. Please wait before scanning again.` };
+        }
+        if (hasIn || hasAbsence) {
+          return { ok: false, error: `${hit.student.name} already has an attendance record today.` };
+        }
+        const direction: Exclude<Direction, "none"> = "in";
         const when = new Date();
         const status = direction === "in" ? classifyIn(state.school, when) : classifyOut(state.school, when);
         const recorded = recordEvent(state, hit.student, direction, status, "face", when);
@@ -350,26 +427,34 @@ export const useSchool = create<SchoolState & Actions>()(
         return created;
       },
 
-      addStudent: ({ name, sectionId, pin, parentId }) => {
+      addStudent: ({ name, sectionId, pin, parentId, gender }) => {
         const state = get();
         if (!name.trim()) return { error: "Student name is required." };
+        if (!gender) {
+          return {
+            error:
+              "Choose Male or Female before saving. Gender is recorded once at enrollment and can never be changed.",
+          };
+        }
         const section = state.sections.find((s) => s.id === sectionId);
         if (!section) return { error: "Choose a section for this student." };
-        const n = nextStudentNumber(state.students);
-        const code = `STU-${n}`;
-        const student: Student = {
-          id: uid(),
-          name: name.trim(),
-          grade: section.grade,
-          section: section.name,
-          sectionId: section.id,
-          code,
-          pin: pin.trim() || String(n),
-          parentId: parentId || null,
-          descriptors: [],
-        };
+        const student = buildStudent(state.students, section, { name, pin, parentId, gender });
         set({ students: [...state.students, student] });
         return student;
+      },
+
+      setStudentGender: (studentId, gender) => {
+        const state = get();
+        const current = state.students.find((s) => s.id === studentId);
+        if (!current) return { error: "That student is no longer on the roster." };
+        if (current.gender) {
+          return {
+            error: `${current.name} is already recorded as ${genderLabel(current.gender)}. Gender is permanent and cannot be changed.`,
+          };
+        }
+        const student: Student = { ...current, gender };
+        set({ students: state.students.map((s) => (s.id === studentId ? student : s)) });
+        return { ok: true, student };
       },
 
       removeStudent: (id) => {
@@ -469,13 +554,13 @@ export const useSchool = create<SchoolState & Actions>()(
               parentsCreated += 1;
             }
           }
-          const student = get().addStudent({
+          const student = buildStudent(get().students, section, {
             name: row.name,
-            sectionId: section.id,
             pin: row.pin,
             parentId,
+            gender: row.gender,
           });
-          if ("error" in student) return student;
+          set({ students: [...get().students, student] });
           added += 1;
         }
         return { added, parents: parentsCreated, sections: sectionsCreated };
@@ -485,8 +570,11 @@ export const useSchool = create<SchoolState & Actions>()(
         const state = get();
         const alert = state.alerts.find((a) => a.id === alertId);
         if (!alert) return;
+        if (alert.emailStatus === "sending" || alert.smsStatus === "sending") return;
+        const sendEmail = alert.emailStatus !== "sent";
+        const sendSms = alert.smsStatus !== "sent";
+        if (!sendEmail && !sendSms) return;
         const parent = state.parents.find((p) => p.id === alert.parentId);
-        const notify = state.school.notify ?? emptyNotify();
         const patch = (
           emailStatus: Alert["emailStatus"],
           smsStatus: Alert["smsStatus"],
@@ -503,26 +591,35 @@ export const useSchool = create<SchoolState & Actions>()(
           patch("skipped", "skipped", "No parent linked.", "No parent linked.");
           return;
         }
-        patch("sending", "sending", "Sending…", "Sending…");
+        patch(
+          sendEmail ? "sending" : alert.emailStatus,
+          sendSms ? "sending" : alert.smsStatus,
+          sendEmail ? "Sending…" : alert.emailDetail,
+          sendSms ? "Sending…" : alert.smsDetail,
+        );
         try {
+          await saveSharedSchoolState({ data: { state: sharedSchoolSnapshot(state) } });
           const result = await dispatchNotice({
             data: {
-              fromName: state.school.name,
-              emailHost: notify.emailHost,
-              emailUser: notify.emailUser,
-              emailPass: notify.emailPass,
-              toEmail: parent.email,
-              subject: `${state.school.name}: attendance`,
-              text: alert.text,
-              smsKey: notify.smsKey,
-              smsSender: notify.smsSender,
-              toPhone: parent.phone,
+              alertId,
+              sendEmail,
+              sendSms,
             },
           });
-          patch(result.email.status, result.sms.status, result.email.detail, result.sms.detail);
+          patch(
+            sendEmail ? result.email.status : alert.emailStatus,
+            sendSms ? result.sms.status : alert.smsStatus,
+            sendEmail ? result.email.detail : alert.emailDetail,
+            sendSms ? result.sms.detail : alert.smsDetail,
+          );
         } catch (error) {
           const msg = error instanceof Error ? error.message : "Send failed.";
-          patch("failed", "failed", msg, msg);
+          patch(
+            sendEmail ? "failed" : alert.emailStatus,
+            sendSms ? "failed" : alert.smsStatus,
+            sendEmail ? msg : alert.emailDetail,
+            sendSms ? msg : alert.smsDetail,
+          );
         }
       },
 
@@ -549,7 +646,11 @@ export const useSchool = create<SchoolState & Actions>()(
           school: {
             ...base.school,
             ...data.school,
-            notify: { ...emptyNotify(), ...data.school.notify },
+            notify: {
+              checkIn: data.school.notify?.checkIn ?? true,
+              checkOut: data.school.notify?.checkOut ?? false,
+              absence: data.school.notify?.absence ?? false,
+            },
           },
           officePasswordHash: data.officePasswordHash ?? get().officePasswordHash,
           sections,
@@ -592,7 +693,11 @@ export const useSchool = create<SchoolState & Actions>()(
           school: {
             ...current.school,
             ...p.school,
-            notify: { ...emptyNotify(), ...p.school?.notify },
+            notify: {
+              checkIn: p.school?.notify?.checkIn ?? true,
+              checkOut: p.school?.notify?.checkOut ?? false,
+              absence: p.school?.notify?.absence ?? false,
+            },
           },
           sections,
           students: (p.students ?? current.students).map((s) => hydrateStudent(s, sections)),

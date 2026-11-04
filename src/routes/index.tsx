@@ -7,6 +7,7 @@ import { ClientReady } from "@/components/client-ready";
 import { Field } from "@/components/field";
 import { SectionPicker } from "@/components/section-picker";
 import { Button } from "@/components/ui/button";
+import { sortSections, studentsInSection } from "@/lib/school/sections";
 import { useSchool } from "@/lib/school/store";
 
 export const Route = createFileRoute("/")({ component: Home });
@@ -14,7 +15,7 @@ export const Route = createFileRoute("/")({ component: Home });
 function Home() {
   const name = useSchool((s) => s.school.name);
   return (
-    <AppShell title="School Gate Interface" kicker={name}>
+    <AppShell title="School FRS Interface" kicker={name}>
       <ClientReady>
         <HomeBody />
       </ClientReady>
@@ -27,45 +28,61 @@ function HomeBody() {
   const ready = Boolean(useSchool((s) => s.officePasswordHash));
   const session = useSchool((s) => s.session);
   const sections = useSchool((s) => s.sections);
+  const students = useSchool((s) => s.students);
 
   return (
-    <div className="grid gap-5">
+    <div className="relative isolate grid gap-5 rounded-[2rem] bg-canvas/80 p-1 sm:p-2">
+      <img
+        src="/scnhs-logo.png"
+        alt=""
+        aria-hidden="true"
+        className="pointer-events-none absolute right-3 -top-24 z-[-2] size-[20rem] max-w-none object-contain opacity-[0.70] mix-blend-multiply sm:right-7 sm:-top-24 sm:size-[20rem]"
+      />
       <p className="max-w-2xl text-muted">
-        This computer is the school gate. Every student belongs to one section. They sign in
-        and check in only under that section — Grade 7 cannot log into Grade 10 or in any Senior High strand.
-        The office keeps all sections. Parents get email and SMS when a child is scanned.
+        This platform is the School FRS for attendance monitoring. Every student belongs to one section. They sign in
+        and check in only under that section. The Office Dashboard keeps all sections and enrolled students. Parents desk will notify when their child is scanned. 
+        "Ang Pandayan ng Responsableng Mamamayan".
       </p>
 
       {!ready ? <SetupOffice /> : session.role === "none" ? <SignInRow /> : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <RoleCard to="/gate" icon={DoorOpen} title="Gate" body="Pick a section, then face or PIN." />
-        <RoleCard to="/office" icon={Landmark} title="Office" body="Sections, roster, and alerts." />
-        <RoleCard to="/student" icon={GraduationCap} title="Student" body="Sign in to your own section." />
+        <RoleCard to="/gate" icon={DoorOpen} title="Gate" body="Automatic Face Detection System, then check in/out." />
+        <RoleCard to="/office" icon={Landmark} title="Office" body="Sections, Roster, and Alerts." />
+        <RoleCard to="/student" icon={GraduationCap} title="Student" body="Sign in to your own Section." />
         <RoleCard to="/parent" icon={Bell} title="Parents" body="See your child’s day." />
       </div>
 
       <section className="rounded-3xl bg-paper p-5 shadow-border sm:p-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2 className="font-display text-xl font-semibold">Open sections</h2>
-          <p className="text-sm text-muted">{sections.length} sections on this campus</p>
+          <h2 className="font-display text-xl font-semibold">Existing Sections</h2>
+          <p className="text-sm text-muted">{sections.length} sections saved on this platform</p>
         </div>
-        <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {["7", "8", "9", "10", "11", "12"].map((grade) => {
-            const names = sections.filter((s) => s.grade === grade).map((s) => s.name);
-            if (!names.length) return null;
-            return (
-              <li key={grade} className="rounded-2xl bg-canvas/80 px-4 py-3 text-sm">
-                <span className="block text-xs uppercase tracking-wider text-muted">Grade {grade}</span>
-                <span className="font-medium">{names.join(" · ")}</span>
-              </li>
-            );
-          })}
-        </ul>
+        {sections.length === 0 ? (
+          <p className="mt-4 rounded-2xl bg-canvas/80 px-4 py-5 text-sm text-muted">
+            No sections have been created yet.
+          </p>
+        ) : (
+          <ul className="mt-4 grid items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {sortSections(sections).map((section) => {
+              const count = studentsInSection(students, section.id).length;
+              return (
+                <li key={section.id} className="flex min-h-32 flex-col justify-between rounded-2xl bg-canvas/80 p-4">
+                    <span>
+                      <span className="block text-xs uppercase tracking-wider text-muted">Grade {section.grade}</span>
+                      <span className="mt-1 block font-display text-lg font-semibold">{section.name}</span>
+                      {section.adviser ? <span className="mt-1 block text-xs text-muted">{section.adviser}</span> : null}
+                    </span>
+                    <span className="mt-4 text-sm text-muted">{count} student{count === 1 ? "" : "s"}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </section>
 
       <section className="rounded-3xl bg-paper p-5 shadow-border sm:p-6">
-        <h2 className="font-display text-xl font-semibold">School day</h2>
+        <h2 className="font-display text-xl font-semibold">Class Schedule</h2>
         <ol className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <Step n="1" title="Arrival">
             {school.arrivalStart}–{school.arrivalEnd} is on time. After that is late.
@@ -98,7 +115,7 @@ function SetupOffice() {
       setError(result.error);
       return;
     }
-    void navigate({ to: "/office" });
+    void navigate({ to: "/office", search: { view: "dashboard" } });
   }
 
   return (
@@ -140,7 +157,7 @@ function SignInRow() {
             setOfficeError(result.error);
             return;
           }
-          void navigate({ to: "/office" });
+          void navigate({ to: "/office", search: { view: "dashboard" } });
         }}
       >
         <h2 className="font-display text-xl font-semibold">Office</h2>
@@ -174,7 +191,7 @@ function SignInRow() {
             Your section
             <SectionPicker sections={sections} value={sectionId} onChange={setSectionId} />
           </label>
-          <Field name="code" label="Student code" placeholder="STU-1001" required autoComplete="username" />
+          <Field name="code" label="Student code" placeholder="STUDENTS-1001" required autoComplete="username" />
           <Field name="pin" label="PIN" required autoComplete="current-password" />
           <Button type="submit" variant="outline">
             Open my section
@@ -225,7 +242,7 @@ function RoleCard({
       to={to}
       className="rounded-3xl bg-paper p-5 shadow-border transition-[box-shadow] duration-150 hover:shadow-border-hover"
     >
-      <span className="grid size-11 place-items-center rounded-2xl bg-leaf text-primary">
+      <span className="grid size-11 place-items-center rounded-2xl bg-sky-soft text-navy">
         <Icon className="size-5" strokeWidth={1.75} />
       </span>
       <h2 className="mt-4 font-display text-2xl font-semibold">{title}</h2>

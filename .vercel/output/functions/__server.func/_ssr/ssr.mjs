@@ -1,19 +1,33 @@
-import { n as __exportAll } from "../_runtime.mjs";
+import { r as __exportAll$1 } from "../_runtime.mjs";
 import { A as toCrossJSONStream, B as invariant, C as require_jsx_runtime, D as fromJSON, F as resolveManifestAssetLink, I as resolveManifestCssLink, J as rootRouteId, K as isRedirect, L as waitForReason, N as getScriptPreloadAttrs, P as getStylesheetHref, R as _getRenderedMatches, U as isDangerousProtocol, W as isPromise, X as require_react, Y as isNotFound, a as isSsrResponse, c as stripSsrResponseBody, i as disposeSsrResponse, k as toCrossJSONAsync, m as RouterProvider, n as bindSsrResponseToRequest, o as normalizeSsrResponse, q as parseRedirect, r as defineHandlerCallback, s as replaceSsrResponse, t as renderRouterToStream, z as executeRewriteInput } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as createServerHistory } from "../_libs/tanstack__history.mjs";
 import { a as defaultSerovalDeserializerPlugins, i as createRawStreamRPCPlugin, n as attachRouterServerSsrUtils, o as makeSerovalPlugin, r as getNormalizedURL, s as createSerializationAdapter, t as mergeHeaders } from "../_libs/@tanstack/router-core+[...].mjs";
-import { n as toResponse, t as H3Event } from "../_libs/h3-v2+rou3.mjs";
+import { n as setCookie, r as toResponse, t as H3Event } from "../_libs/h3-v2+rou3.mjs";
 import { AsyncLocalStorage } from "node:async_hooks";
 //#region node_modules/.nitro/vite/services/ssr/index.js
-var ssr_exports = /* @__PURE__ */ __exportAll({
+var ssr_exports = /* @__PURE__ */ __exportAll$1({
+	a: () => getServerFnById,
 	createServerEntry: () => createServerEntry,
 	default: () => server_default,
-	n: () => TSS_SERVER_FUNCTION,
-	r: () => getServerFnById,
-	t: () => createServerFn
+	i: () => TSS_SERVER_FUNCTION,
+	n: () => createMiddleware,
+	o: () => getRequest,
+	r: () => createServerFn,
+	s: () => __exportAll,
+	t: () => server_exports
 });
 require_react();
 var import_jsx_runtime = require_jsx_runtime();
+var __defProp = Object.defineProperty;
+var __exportAll = (all, no_symbols) => {
+	let target = {};
+	for (var name in all) __defProp(target, name, {
+		get: all[name],
+		enumerable: true
+	});
+	if (!no_symbols) __defProp(target, Symbol.toStringTag, { value: "Module" });
+	return target;
+};
 function StartServer(props) {
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RouterProvider, { router: props.router });
 }
@@ -73,6 +87,21 @@ function getH3Event() {
 	if (!event) throw new Error(`No StartEvent found in AsyncLocalStorage. Make sure you are using the function within the server runtime.`);
 	return event.h3Event;
 }
+function getRequest() {
+	return getH3Event().req;
+}
+/**
+* Set a cookie value by name.
+* @param name Name of the cookie to set
+* @param value Value of the cookie to set
+* @param options {CookieSerializeOptions} Options for serializing the cookie
+* ```ts
+* setCookie('Authorization', '1234567')
+* ```
+*/
+function setCookie$1(name, value, options) {
+	setCookie(getH3Event(), name, value, options);
+}
 function getResponse() {
 	return getH3Event().res;
 }
@@ -87,7 +116,7 @@ var HEADERS = { TSS_SHELL: "X-TSS_SHELL" };
 * the dev styles URL for route-scoped CSS collection.
 */
 async function getStartManifest(matchedRoutes) {
-	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-UyCmWaIS.mjs");
+	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-CEQGHqTU.mjs");
 	const startManifest = tsrStartManifest();
 	let routes = startManifest.routes;
 	routes[rootRouteId];
@@ -106,10 +135,20 @@ async function getStartManifest(matchedRoutes) {
 		routes: manifestRoutes
 	};
 }
-var manifest = { "a3023c896c3aa5153cee240050c270493fbb3d851073861eae92f7d0ef849630": {
-	functionName: "dispatchNotice_createServerFn_handler",
-	importer: () => import("./notify-Cwk_bpXW.mjs")
-} };
+var manifest = {
+	"504039b5abbd38d15822f29f46538b9446d5c16912edd21925f08a4211b58eff": {
+		functionName: "saveSharedSchoolState_createServerFn_handler",
+		importer: () => import("./shared-state-CCB8mKl5.mjs")
+	},
+	"ab561e1e8d886af19331e2b312c2087c505291cd9af6eacb116e13b4415bd61b": {
+		functionName: "loadSharedSchoolState_createServerFn_handler",
+		importer: () => import("./shared-state-CCB8mKl5.mjs")
+	},
+	"c649b689ffd9a0d4dcbd0f4de5d9c3ac13725ec86d354ab9181d45cb7aae5728": {
+		functionName: "sendSchoolNotice_createServerFn_handler",
+		importer: () => import("./shared-state-CCB8mKl5.mjs")
+	}
+};
 async function getServerFnById(id, access) {
 	const serverFnInfo = manifest[id];
 	if (!serverFnInfo) throw new Error("Server function info not found for " + id);
@@ -1501,7 +1540,7 @@ var getBaseManifest = getProdBaseManifest;
 var createEarlyHintsForRequest = createEarlyHintsCollector;
 async function loadEntries() {
 	const [routerEntry, startEntry, pluginAdapters] = await Promise.all([
-		import("./router-DsUoMmFS.mjs").then((n) => n.t),
+		import("./router-GP3dJUXq.mjs").then((n) => n.t),
 		import("./start-5Z2QO8AU.mjs"),
 		import("./empty-plugin-adapters-D9UWiqvJ.mjs")
 	]);
@@ -1944,6 +1983,7 @@ async function handleServerRoutes({ getRouter, request, url, executeRouter, cont
 		handlerType: "router"
 	}, request.signal, terminalNext));
 }
+var server_exports = /* @__PURE__ */ __exportAll({ setCookie: () => setCookie$1 });
 var fetch = createStartHandler(defaultStreamHandler);
 function createServerEntry(entry) {
 	return { async fetch(...args) {
@@ -1952,4 +1992,4 @@ function createServerEntry(entry) {
 }
 var server_default = createServerEntry({ fetch });
 //#endregion
-export { createServerEntry, server_default as default, ssr_exports as i, TSS_SERVER_FUNCTION as n, getServerFnById as r, createServerFn as t };
+export { getServerFnById as a, ssr_exports as c, createServerEntry, server_default as default, TSS_SERVER_FUNCTION as i, createMiddleware as n, getRequest as o, createServerFn as r, __exportAll as s, server_exports as t };

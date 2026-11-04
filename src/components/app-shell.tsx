@@ -26,14 +26,14 @@ export function AppShell({
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
-    <div className="min-h-svh bg-canvas text-ink">
+    <div className="min-h-svh bg-paper text-ink">
       <header className="border-b border-line bg-paper/90 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
           <Link to="/" className="flex min-h-11 items-center gap-3">
             <img
-              src="/scnhs-logo.png"
+              src="/scnhs-logo.png?v=20260929"
               alt="Sta. Catalina National High School seal"
-              className="size-10 rounded-lg bg-white object-contain"
+              className="size-11 rounded-lg bg-white object-contain"
             />
             <span className="leading-tight">
               <span className="block font-display text-sm font-semibold text-balance">
@@ -52,7 +52,7 @@ export function AppShell({
                   to={item.to}
                   className={cn(
                     "inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm",
-                    active ? "bg-leaf text-primary-dark" : "text-muted hover:bg-leaf/50 hover:text-ink",
+                    active ? "bg-sky-soft text-navy-dark" : "text-muted hover:bg-sky-soft/50 hover:text-ink",
                   )}
                 >
                   <Icon className="size-4" strokeWidth={1.75} />
@@ -86,7 +86,7 @@ export function AppShell({
                 to={item.to}
                 className={cn(
                   "flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px]",
-                  active ? "text-primary" : "text-muted",
+                  active ? "text-sky-dark" : "text-muted",
                 )}
               >
                 <Icon className="size-5" strokeWidth={1.75} />

@@ -1,28 +1,53 @@
 @import "tailwindcss";
 
 @theme {
-  --color-canvas: #eaf2fb;
-  --color-paper: #f9fbff;
-  --color-ink: #142a45;
-  --color-muted: #526a84;
-  --color-line: #d1dfed;
-  --color-primary: #173b66;
-  --color-primary-dark: #102b4c;
-  --color-primary-fg: #f7fbff;
-  --color-leaf: #d9eafa;
-  --color-gold: #a9d5f5;
-  --color-gold-dark: #285b87;
-  --color-gold-soft: #e4f2ff;
+  /*
+   * White page and white cards. The component scheme is three blues only:
+   *
+   *   navy blue  (#0b2545) — structure: primary buttons, active tabs,
+   *                          badges, number chips, kiosk panels.
+   *   dark blue  (#061530) — depth: hover states, deep text on light tints.
+   *   sky blue   (#38bdf8) — highlights: accents on dark panels, focus
+   *                          rings, card icons, the "late" badge.
+   *
+   * Every surface stays white. `canvas` is white carrying the faintest
+   * sky-blue wash so recessed chips and inputs keep their edge on white
+   * cards without introducing a coloured background.
+   */
+  --color-paper: #ffffff;
+  --color-canvas: #f2f7fe;
+
+  --color-ink: #0a1c3d;
+  --color-muted: #58708f;
+  --color-line: #d9e4f3;
+
+  /* Navy blue — the primary component colour. */
+  --color-navy: #0b2545;
+  --color-primary: #0b2545;
+  --color-primary-fg: #ffffff;
+
+  /* Dark blue — the deep end of the scheme. */
+  --color-navy-dark: #061530;
+  --color-primary-dark: #061530;
+
+  /* Sky blue — the accent end of the scheme. */
+  --color-sky: #38bdf8;
+  --color-sky-dark: #0369a1;
+  --color-sky-soft: #dceeff;
+  --color-accent-ink: #061530;
+
+  /* Status semantics, kept so on-time / late / absent stay readable. */
   --color-ok: #146c43;
   --color-ok-soft: #d9f0e4;
   --color-rose: #9f2d3a;
   --color-rose-soft: #f8dfe2;
+
   --font-sans: "Figtree", "Segoe UI", sans-serif;
   --font-display: "Fraunces", "Times New Roman", serif;
-  --shadow-border: 0px 0px 0px 1px rgba(20, 42, 69, 0.08),
-    0px 1px 2px -1px rgba(20, 42, 69, 0.08), 0px 8px 24px -12px rgba(20, 42, 69, 0.16);
-  --shadow-border-hover: 0px 0px 0px 1px rgba(20, 42, 69, 0.12),
-    0px 1px 2px -1px rgba(20, 42, 69, 0.1), 0px 12px 28px -12px rgba(20, 42, 69, 0.2);
+  --shadow-border: 0px 0px 0px 1px rgba(11, 37, 69, 0.09),
+    0px 1px 2px -1px rgba(11, 37, 69, 0.1), 0px 8px 24px -12px rgba(11, 37, 69, 0.18);
+  --shadow-border-hover: 0px 0px 0px 1px rgba(11, 37, 69, 0.14),
+    0px 1px 2px -1px rgba(11, 37, 69, 0.12), 0px 12px 28px -12px rgba(11, 37, 69, 0.22);
 }
 
 @layer base {
@@ -32,7 +57,7 @@
   }
 
   body {
-    background: var(--color-canvas);
+    background: var(--color-paper);
     color: var(--color-ink);
     font-family: var(--font-sans);
   }
@@ -55,5 +80,67 @@
   input,
   select {
     font: inherit;
+  }
+}
+
+.print-attendance {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .print-attendance,
+  .print-attendance * {
+    visibility: visible !important;
+  }
+
+  .print-attendance {
+    position: absolute;
+    inset: 0;
+    display: block;
+    color: #111827;
+    background: #fff;
+    font-family: Arial, sans-serif;
+  }
+
+  .print-attendance h1 {
+    margin: 0 0 8px;
+    font-size: 20pt;
+  }
+
+  .print-attendance h2 {
+    margin: 0 0 8px;
+    font-size: 15pt;
+  }
+
+  .print-attendance p {
+    margin: 4px 0;
+    font-size: 10pt;
+  }
+
+  .print-attendance table {
+    width: 100%;
+    margin-top: 16px;
+    border-collapse: collapse;
+    font-size: 10pt;
+  }
+
+  .print-attendance th,
+  .print-attendance td {
+    padding: 8px;
+    border: 1px solid #6b7280;
+    text-align: left;
+  }
+
+  .print-attendance th {
+    background: #e5e7eb !important;
+    print-color-adjust: exact;
   }
 }

@@ -21,7 +21,7 @@ export function SectionPicker({
   const ordered = sortSections(sections);
   const grades = [...new Set(ordered.map((s) => s.grade))];
   const cls = dark
-    ? "min-h-12 w-full rounded-xl border-0 bg-primary-dark px-3 text-paper outline-none ring-gold focus:ring-2"
+    ? "min-h-12 w-full rounded-xl border-0 bg-navy-dark px-3 text-paper outline-none ring-sky focus:ring-2"
     : "mt-1 min-h-11 w-full rounded-xl bg-canvas px-3 text-sm text-ink outline-none ring-primary focus:ring-2";
 
   return (

@@ -10,11 +10,9 @@ export type Direction = "in" | "out" | "none";
 export type DeliveryStatus = "idle" | "sending" | "sent" | "failed" | "skipped";
 
 export type NotifySettings = {
-  emailUser: string;
-  emailPass: string;
-  emailHost: string;
-  smsKey: string;
-  smsSender: string;
+  checkIn: boolean;
+  checkOut: boolean;
+  absence: boolean;
 };
 
 export type SchoolSection = {
@@ -23,6 +21,9 @@ export type SchoolSection = {
   name: string;
   adviser: string;
 };
+
+/** Student gender. Permanent once set at enrollment — never editable again. */
+export type Gender = "male" | "female";
 
 export type Student = {
   id: string;
@@ -33,6 +34,8 @@ export type Student = {
   code: string;
   pin: string;
   parentId: string | null;
+  /** Set once at enrollment, then locked permanently. */
+  gender: Gender | null;
   descriptors: number[][];
 };
 
@@ -99,6 +102,7 @@ export type ClassRow = {
   grade: string;
   section: string;
   pin: string;
+  gender: Gender | null;
   parentName: string;
   parentEmail: string;
   parentPhone: string;

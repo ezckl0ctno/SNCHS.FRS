@@ -1,0 +1,406 @@
+import { o as __toESM } from "../_runtime.mjs";
+import { C as require_jsx_runtime, X as require_react, b as Link, x as useNavigate } from "../_libs/@tanstack/react-router+[...].mjs";
+import { c as Bell, i as Landmark, o as GraduationCap, s as DoorOpen } from "../_libs/lucide-react.mjs";
+import { g as studentsInSection, h as sortSections, n as Button, r as ClientReady, t as AppShell, v as useSchool } from "./app-shell-DQRKUXmS.mjs";
+import { n as SectionPicker, t as Field } from "./section-picker-CJ_hYGnM.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-DWkV5Ssd.js
+var import_react = /* @__PURE__ */ __toESM(require_react());
+var import_jsx_runtime = require_jsx_runtime();
+function Home() {
+	const name = useSchool((s) => s.school.name);
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AppShell, {
+		title: "School FRS Interface",
+		kicker: name,
+		children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ClientReady, { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HomeBody, {}) })
+	});
+}
+function HomeBody() {
+	const school = useSchool((s) => s.school);
+	const ready = Boolean(useSchool((s) => s.officePasswordHash));
+	const session = useSchool((s) => s.session);
+	const sections = useSchool((s) => s.sections);
+	const students = useSchool((s) => s.students);
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+		className: "relative isolate grid gap-5 rounded-[2rem] bg-canvas/80 p-1 sm:p-2",
+		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", {
+				src: "/scnhs-logo.png",
+				alt: "",
+				"aria-hidden": "true",
+				className: "pointer-events-none absolute right-3 -top-24 z-[-2] size-[20rem] max-w-none object-contain opacity-[0.70] mix-blend-multiply sm:right-7 sm:-top-24 sm:size-[20rem]"
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+				className: "max-w-2xl text-muted",
+				children: "This platform is the School FRS for attendance monitoring. Every student belongs to one section. They sign in and check in only under that section. The Office Dashboard keeps all sections and enrolled students. Parents desk will get a notification when their child is scanned. \"Ang Pandayan ng Responsableng Mamamayan\"."
+			}),
+			!ready ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SetupOffice, {}) : session.role === "none" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SignInRow, {}) : null,
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "grid gap-3 sm:grid-cols-2 lg:grid-cols-4",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoleCard, {
+						to: "/gate",
+						icon: DoorOpen,
+						title: "Gate",
+						body: "Automatic Face Detection System, then check in/out."
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoleCard, {
+						to: "/office",
+						icon: Landmark,
+						title: "Office",
+						body: "Sections, Roster, and Alerts."
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoleCard, {
+						to: "/student",
+						icon: GraduationCap,
+						title: "Student",
+						body: "Sign in to your own Section."
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoleCard, {
+						to: "/parent",
+						icon: Bell,
+						title: "Parents",
+						body: "See your child’s day."
+					})
+				]
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
+				className: "rounded-3xl bg-paper p-5 shadow-border sm:p-6",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex flex-wrap items-end justify-between gap-3",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+						className: "font-display text-xl font-semibold",
+						children: "Existing Sections"
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+						className: "text-sm text-muted",
+						children: [sections.length, " sections saved on this platform"]
+					})]
+				}), sections.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+					className: "mt-4 rounded-2xl bg-canvas/80 px-4 py-5 text-sm text-muted",
+					children: "No sections have been created yet."
+				}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("ul", {
+					className: "mt-4 grid items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3",
+					children: sortSections(sections).map((section) => {
+						const count = studentsInSection(students, section.id).length;
+						return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", {
+							className: "flex min-h-32 flex-col justify-between rounded-2xl bg-canvas/80 p-4",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+									className: "block text-xs uppercase tracking-wider text-muted",
+									children: ["Grade ", section.grade]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "mt-1 block font-display text-lg font-semibold",
+									children: section.name
+								}),
+								section.adviser ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "mt-1 block text-xs text-muted",
+									children: section.adviser
+								}) : null
+							] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+								className: "mt-4 text-sm text-muted",
+								children: [
+									count,
+									" student",
+									count === 1 ? "" : "s"
+								]
+							})]
+						}, section.id);
+					})
+				})]
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
+				className: "rounded-3xl bg-paper p-5 shadow-border sm:p-6",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+					className: "font-display text-xl font-semibold",
+					children: "Class Schedule"
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("ol", {
+					className: "mt-4 grid gap-3 text-sm sm:grid-cols-2",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Step, {
+							n: "1",
+							title: "Arrival",
+							children: [
+								school.arrivalStart,
+								"–",
+								school.arrivalEnd,
+								" is on time. After that is late."
+							]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Step, {
+							n: "2",
+							title: "No arrival",
+							children: [
+								"After ",
+								school.absentCutoff,
+								", the office marks missing students — one section or all."
+							]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Step, {
+							n: "3",
+							title: "Dismissal",
+							children: [
+								"Checkout before ",
+								school.dismissStart,
+								" is left early."
+							]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Step, {
+							n: "4",
+							title: "Parents",
+							children: "Linked parents get SMS and email at the same moment as the gate scan."
+						})
+					]
+				})]
+			})
+		]
+	});
+}
+function SetupOffice() {
+	const setupOffice = useSchool((s) => s.setupOffice);
+	const navigate = useNavigate();
+	const [error, setError] = (0, import_react.useState)("");
+	async function onSubmit(e) {
+		e.preventDefault();
+		const password = String(new FormData(e.currentTarget).get("password") || "");
+		const result = await setupOffice(password);
+		if (!result.ok) {
+			setError(result.error);
+			return;
+		}
+		navigate({
+			to: "/office",
+			search: { view: "dashboard" }
+		});
+	}
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
+		className: "rounded-3xl bg-paper p-5 shadow-border",
+		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+				className: "font-display text-xl font-semibold",
+				children: "Create the office password"
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+				className: "mt-1 text-sm text-muted",
+				children: "Do this once. Only the office should know it. You will need it each time you open the roster."
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+				className: "mt-4 grid max-w-sm gap-3",
+				onSubmit,
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, {
+						name: "password",
+						label: "Office password",
+						type: "password",
+						required: true,
+						autoComplete: "new-password"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
+						type: "submit",
+						children: "Save and open office"
+					}),
+					error ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+						className: "text-sm text-rose",
+						children: error
+					}) : null
+				]
+			})
+		]
+	});
+}
+function SignInRow() {
+	const signInOffice = useSchool((s) => s.signInOffice);
+	const signInParent = useSchool((s) => s.signInParent);
+	const signInStudent = useSchool((s) => s.signInStudent);
+	const sections = useSchool((s) => s.sections);
+	const navigate = useNavigate();
+	const [officeError, setOfficeError] = (0, import_react.useState)("");
+	const [parentError, setParentError] = (0, import_react.useState)("");
+	const [studentError, setStudentError] = (0, import_react.useState)("");
+	const [sectionId, setSectionId] = (0, import_react.useState)("");
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+		className: "grid gap-4 lg:grid-cols-3",
+		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+				className: "rounded-3xl bg-paper p-5 shadow-border",
+				onSubmit: async (e) => {
+					e.preventDefault();
+					const password = String(new FormData(e.currentTarget).get("office") || "");
+					const result = await signInOffice(password);
+					if (!result.ok) {
+						setOfficeError(result.error);
+						return;
+					}
+					navigate({
+						to: "/office",
+						search: { view: "dashboard" }
+					});
+				},
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+					className: "font-display text-xl font-semibold",
+					children: "Office"
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "mt-4 grid gap-3",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, {
+							name: "office",
+							label: "Password",
+							type: "password",
+							required: true,
+							autoComplete: "current-password"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
+							type: "submit",
+							children: "Open office"
+						}),
+						officeError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+							className: "text-sm text-rose",
+							children: officeError
+						}) : null
+					]
+				})]
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+				className: "rounded-3xl bg-paper p-5 shadow-border",
+				onSubmit: async (e) => {
+					e.preventDefault();
+					const data = new FormData(e.currentTarget);
+					const result = await signInStudent(sectionId, String(data.get("code") || ""), String(data.get("pin") || ""));
+					if (!result.ok) {
+						setStudentError(result.error);
+						return;
+					}
+					navigate({ to: "/student" });
+				},
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+						className: "font-display text-xl font-semibold",
+						children: "Student"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+						className: "mt-1 text-sm text-muted",
+						children: "Sign in only to the section on your class list."
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "mt-4 grid gap-3",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+								className: "text-xs uppercase tracking-wider text-muted",
+								children: ["Your section", /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionPicker, {
+									sections,
+									value: sectionId,
+									onChange: setSectionId
+								})]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, {
+								name: "code",
+								label: "Student code",
+								placeholder: "STUDENTS-1001",
+								required: true,
+								autoComplete: "username"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, {
+								name: "pin",
+								label: "PIN",
+								required: true,
+								autoComplete: "current-password"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
+								type: "submit",
+								variant: "outline",
+								children: "Open my section"
+							}),
+							studentError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								className: "text-sm text-rose",
+								children: studentError
+							}) : null
+						]
+					})
+				]
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+				className: "rounded-3xl bg-paper p-5 shadow-border",
+				onSubmit: async (e) => {
+					e.preventDefault();
+					const data = new FormData(e.currentTarget);
+					const result = await signInParent(String(data.get("email") || ""), String(data.get("password") || ""));
+					if (!result.ok) {
+						setParentError(result.error);
+						return;
+					}
+					navigate({ to: "/parent" });
+				},
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+					className: "font-display text-xl font-semibold",
+					children: "Parent"
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "mt-4 grid gap-3",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, {
+							name: "email",
+							label: "Email",
+							type: "email",
+							required: true,
+							autoComplete: "username"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Field, {
+							name: "password",
+							label: "Password",
+							type: "password",
+							required: true,
+							autoComplete: "current-password"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
+							type: "submit",
+							variant: "outline",
+							children: "Open parent desk"
+						}),
+						parentError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+							className: "text-sm text-rose",
+							children: parentError
+						}) : null
+					]
+				})]
+			})
+		]
+	});
+}
+function RoleCard({ to, icon: Icon, title, body }) {
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Link, {
+		to,
+		className: "rounded-3xl bg-paper p-5 shadow-border transition-[box-shadow] duration-150 hover:shadow-border-hover",
+		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+				className: "grid size-11 place-items-center rounded-2xl bg-sky-soft text-navy",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Icon, {
+					className: "size-5",
+					strokeWidth: 1.75
+				})
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+				className: "mt-4 font-display text-2xl font-semibold",
+				children: title
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+				className: "mt-1 text-sm text-muted",
+				children: body
+			})
+		]
+	});
+}
+function Step({ n, title, children }) {
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", {
+		className: "flex gap-3 rounded-2xl bg-canvas/80 p-3",
+		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+			className: "grid size-8 shrink-0 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-fg",
+			children: n
+		}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+			className: "block font-medium",
+			children: title
+		}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+			className: "text-muted",
+			children
+		})] })]
+	});
+}
+//#endregion
+export { Home as component };

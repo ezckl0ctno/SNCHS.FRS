@@ -57,7 +57,7 @@ function StudentSignIn() {
           Section
           <SectionPicker sections={sections} value={sectionId} onChange={setSectionId} />
         </label>
-        <Field name="code" label="Student code" placeholder="STU-1001" required autoComplete="username" />
+        <Field name="code" label="Student code" placeholder="Enter your student code" required autoComplete="username" />
         <Field name="pin" label="PIN" required autoComplete="current-password" />
         <Button type="submit">Sign in</Button>
         {error ? <p className="text-sm text-rose">{error}</p> : null}
